@@ -28,8 +28,8 @@ export default function ProfileForm({ profile }: { profile: any }) {
       body: JSON.stringify({
         id: profile.id,
         ...p,
-        skills: p.skills.split(",").map((s) => s.trim()).filter(Boolean),
-        preferred_roles: p.preferred_roles.split(",").map((s) => s.trim()).filter(Boolean),
+        skills: p.skills.split(",").map((s: string) => s.trim()).filter(Boolean),
+        preferred_roles: p.preferred_roles.split(",").map((s: string) => s.trim()).filter(Boolean),
       }),
     });
     setSaving(false);

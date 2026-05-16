@@ -41,10 +41,10 @@ export default function SettingsForm({ settings }: { settings: any }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         ...s,
-        keywords_dev: s.keywords_dev.split(",").map((x) => x.trim()).filter(Boolean),
-        keywords_psych: s.keywords_psych.split(",").map((x) => x.trim()).filter(Boolean),
-        negative_keywords: s.negative_keywords.split(",").map((x) => x.trim()).filter(Boolean),
-        notify_emails: s.notify_emails.split(",").map((x) => x.trim()).filter(Boolean),
+        keywords_dev: s.keywords_dev.split(",").map((x: string) => x.trim()).filter(Boolean),
+        keywords_psych: s.keywords_psych.split(",").map((x: string) => x.trim()).filter(Boolean),
+        negative_keywords: s.negative_keywords.split(",").map((x: string) => x.trim()).filter(Boolean),
+        notify_emails: s.notify_emails.split(",").map((x: string) => x.trim()).filter(Boolean),
       }),
     });
     setSaving(false);
