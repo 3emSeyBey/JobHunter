@@ -5,10 +5,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Clock, Sparkles, Tag, BellRing, KeyRound, Save, CheckCircle2 } from "lucide-react";
 
 const FREQ_OPTIONS = [
-  { value: "twice_daily", label: "Twice daily (default)" },
-  { value: "daily", label: "Daily" },
+  { value: "twice_daily", label: "Twice daily — 00:00 + 12:00 UTC (default)" },
+  { value: "daily", label: "Daily — 00:00 UTC" },
   { value: "every_6h", label: "Every 6 hours" },
   { value: "hourly", label: "Hourly" },
 ];
@@ -49,87 +51,131 @@ export default function SettingsForm({ settings }: { settings: any }) {
     });
     setSaving(false);
     setSaved(r.ok);
+    if (r.ok) setTimeout(() => setSaved(false), 3000);
   }
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-3">
-        <h3 className="font-semibold">Cron frequency</h3>
-        <select
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-          value={s.cron_frequency}
-          onChange={(e) => setS({ ...s, cron_frequency: e.target.value })}
-        >
-          {FREQ_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <p className="text-xs text-muted-foreground">
-          GitHub Actions cron actually runs every hour and skips runs based on this setting. Twice daily = 00:00 + 12:00 UTC.
-        </p>
-      </section>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Clock className="h-5 w-5 text-accent" />
+            <div>
+              <CardTitle>Schedule</CardTitle>
+              <CardDescription>Cron cadence. Workflow fires hourly + skips runs based on this.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <select
+            className="h-9 w-full max-w-md rounded-md border border-input bg-background px-3 text-sm"
+            value={s.cron_frequency}
+            onChange={(e) => setS({ ...s, cron_frequency: e.target.value })}
+          >
+            {FREQ_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </CardContent>
+      </Card>
 
-      <section className="space-y-3">
-        <h3 className="font-semibold">LLM</h3>
-        <div>
-          <Label>Model</Label>
-          <Input value={s.llm_model} onChange={(e) => setS({ ...s, llm_model: e.target.value })} />
-        </div>
-        <div>
-          <Label>Dev (Mack) prompt</Label>
-          <Textarea
-            rows={10}
-            value={s.llm_prompt_dev}
-            onChange={(e) => setS({ ...s, llm_prompt_dev: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Psych (Jenefer) prompt</Label>
-          <Textarea
-            rows={10}
-            value={s.llm_prompt_psych}
-            onChange={(e) => setS({ ...s, llm_prompt_psych: e.target.value })}
-          />
-        </div>
-      </section>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Sparkles className="h-5 w-5 text-accent" />
+            <div>
+              <CardTitle>LLM filter</CardTitle>
+              <CardDescription>Gemini model + per-profile system prompts.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="max-w-md">
+            <Label>Model</Label>
+            <Input value={s.llm_model} onChange={(e) => setS({ ...s, llm_model: e.target.value })} className="mono" />
+          </div>
+          <div>
+            <Label>Dev (Mack) prompt</Label>
+            <Textarea
+              rows={12}
+              className="mono text-xs"
+              value={s.llm_prompt_dev}
+              onChange={(e) => setS({ ...s, llm_prompt_dev: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Psych (Jenefer) prompt</Label>
+            <Textarea
+              rows={12}
+              className="mono text-xs"
+              value={s.llm_prompt_psych}
+              onChange={(e) => setS({ ...s, llm_prompt_psych: e.target.value })}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-      <section className="space-y-3">
-        <h3 className="font-semibold">Keywords</h3>
-        <p className="text-xs text-muted-foreground">Used to route jobs to the right profile + skip LLM cost on unrelated posts.</p>
-        <div>
-          <Label>Dev keywords</Label>
-          <Textarea rows={2} value={s.keywords_dev} onChange={(e) => setS({ ...s, keywords_dev: e.target.value })} />
-        </div>
-        <div>
-          <Label>Psych keywords</Label>
-          <Textarea rows={2} value={s.keywords_psych} onChange={(e) => setS({ ...s, keywords_psych: e.target.value })} />
-        </div>
-        <div>
-          <Label>Negative keywords (auto-reject)</Label>
-          <Textarea rows={2} value={s.negative_keywords} onChange={(e) => setS({ ...s, negative_keywords: e.target.value })} />
-        </div>
-      </section>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Tag className="h-5 w-5 text-accent" />
+            <div>
+              <CardTitle>Keywords</CardTitle>
+              <CardDescription>Route jobs to the right profile + skip LLM cost on unrelated posts.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <Label>Dev keywords</Label>
+            <Textarea rows={2} value={s.keywords_dev} onChange={(e) => setS({ ...s, keywords_dev: e.target.value })} />
+          </div>
+          <div>
+            <Label>Psych keywords</Label>
+            <Textarea rows={2} value={s.keywords_psych} onChange={(e) => setS({ ...s, keywords_psych: e.target.value })} />
+          </div>
+          <div>
+            <Label>Negative keywords (auto-reject)</Label>
+            <Textarea rows={2} value={s.negative_keywords} onChange={(e) => setS({ ...s, negative_keywords: e.target.value })} />
+          </div>
+        </CardContent>
+      </Card>
 
-      <section className="space-y-3">
-        <h3 className="font-semibold">Notifications</h3>
-        <div className="flex items-center gap-3">
-          <Switch checked={s.email_enabled} onCheckedChange={(v) => setS({ ...s, email_enabled: v })} />
-          <Label>Email enabled</Label>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch checked={s.telegram_enabled} onCheckedChange={(v) => setS({ ...s, telegram_enabled: v })} />
-          <Label>Telegram enabled</Label>
-        </div>
-        <div>
-          <Label>Notify emails (comma-separated — fallback if profile.notify_email missing)</Label>
-          <Input value={s.notify_emails} onChange={(e) => setS({ ...s, notify_emails: e.target.value })} />
-        </div>
-      </section>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <BellRing className="h-5 w-5 text-accent" />
+            <div>
+              <CardTitle>Notifications</CardTitle>
+              <CardDescription>Where new matches are delivered.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3">
+            <Switch checked={s.email_enabled} onCheckedChange={(v: boolean) => setS({ ...s, email_enabled: v })} />
+            <Label>Email enabled (Gmail SMTP)</Label>
+          </div>
+          <div className="flex items-center gap-3">
+            <Switch checked={s.telegram_enabled} onCheckedChange={(v: boolean) => setS({ ...s, telegram_enabled: v })} />
+            <Label>Telegram enabled</Label>
+          </div>
+          <div>
+            <Label>Notify emails (fallback if profile email missing)</Label>
+            <Input value={s.notify_emails} onChange={(e) => setS({ ...s, notify_emails: e.target.value })} />
+          </div>
+        </CardContent>
+      </Card>
 
-      <section className="space-y-3">
-        <h3 className="font-semibold">OnlineJobs.ph credentials</h3>
-        <p className="text-xs text-muted-foreground">Two logins (one per profile) — login is required by the site.</p>
-        <div className="grid grid-cols-2 gap-2">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <KeyRound className="h-5 w-5 text-accent" />
+            <div>
+              <CardTitle>OnlineJobs.ph credentials</CardTitle>
+              <CardDescription>Login required by the site. One account per profile.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>Dev account email</Label>
             <Input value={s.onlinejobs_dev_email} onChange={(e) => setS({ ...s, onlinejobs_dev_email: e.target.value })} />
@@ -146,12 +192,21 @@ export default function SettingsForm({ settings }: { settings: any }) {
             <Label>Psych account password</Label>
             <Input type="password" value={s.onlinejobs_psych_password} onChange={(e) => setS({ ...s, onlinejobs_psych_password: e.target.value })} />
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      <div className="flex items-center gap-2 pt-2">
-        <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save settings"}</Button>
-        {saved && <span className="text-xs text-green-600">Saved</span>}
+      <div className="sticky bottom-4 z-10 flex justify-end">
+        <div className="flex items-center gap-2 rounded-md border bg-card/95 backdrop-blur p-2 shadow-lg">
+          {saved && (
+            <span className="inline-flex items-center gap-1 text-xs text-emerald-400 mr-1">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Saved
+            </span>
+          )}
+          <Button onClick={save} disabled={saving}>
+            <Save className="mr-2 h-4 w-4" />
+            {saving ? "Saving..." : "Save settings"}
+          </Button>
+        </div>
       </div>
     </div>
   );

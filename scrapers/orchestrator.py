@@ -39,7 +39,13 @@ def _profile_secrets(settings: dict[str, Any]) -> dict[str, str]:
     return out
 
 
-def process_source(c, source: dict[str, Any], settings: dict[str, Any], profiles_by_slug: dict[str, dict]) -> dict[str, int]:
+def process_source(
+    c,
+    source: dict[str, Any],
+    settings: dict[str, Any],
+    profiles_by_slug: dict[str, dict],
+    profile_filter: str | None = None,
+) -> dict[str, int]:
     slug = source["slug"]
     run_id = db.start_run(c, trigger=os.environ.get("RUN_TRIGGER", "cron"), source_slug=slug)
     seen = new = relevant = 0
@@ -80,6 +86,8 @@ def process_source(c, source: dict[str, Any], settings: dict[str, Any], profiles
                 prepared.append(r)
                 continue
             allowed_profiles = source.get("profile_slugs") or ["dev", "psych"]
+            if profile_filter and profile_filter in ("dev", "psych"):
+                allowed_profiles = [p for p in allowed_profiles if p == profile_filter]
             dev_kw = settings.get("keywords_dev", []) if "dev" in allowed_profiles else []
             psych_kw = settings.get("keywords_psych", []) if "psych" in allowed_profiles else []
             profile_slug, hits = suggest_profile(text, dev_kw, psych_kw)
@@ -159,6 +167,7 @@ def process_source(c, source: dict[str, Any], settings: dict[str, Any], profiles
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", help="Run a single source slug (default: all enabled)")
+    ap.add_argument("--profile", choices=["dev", "psych"], help="Restrict to one profile")
     args = ap.parse_args()
 
     c = db.client()
@@ -176,8 +185,13 @@ def main() -> int:
 
     summary: dict[str, dict[str, int]] = {}
     for source in sources:
-        log.info("=== source: %s ===", source["slug"])
-        summary[source["slug"]] = process_source(c, source, settings, profiles)
+        # source-level skip if profile filter excludes this source entirely
+        ps = source.get("profile_slugs") or ["dev", "psych"]
+        if args.profile and args.profile not in ps:
+            log.info("skip %s — profile_slugs=%s does not include %s", source["slug"], ps, args.profile)
+            continue
+        log.info("=== source: %s (profile=%s) ===", source["slug"], args.profile or "both")
+        summary[source["slug"]] = process_source(c, source, settings, profiles, profile_filter=args.profile)
 
     log.info("run summary: %s", summary)
     if settings.get("telegram_enabled"):

@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import Link from "next/link";
+import Sidebar from "@/components/Sidebar";
+import MobileNav from "@/components/MobileNav";
 
 export const metadata: Metadata = {
   title: "JobHunter",
@@ -9,23 +10,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <header className="border-b">
-          <div className="container flex items-center justify-between py-3">
-            <Link href="/" className="font-semibold tracking-tight">
-              JobHunter
-            </Link>
-            <nav className="flex gap-4 text-sm">
-              <Link href="/" className="hover:underline">Dashboard</Link>
-              <Link href="/runs" className="hover:underline">Runs</Link>
-              <Link href="/sources" className="hover:underline">Sources</Link>
-              <Link href="/profiles" className="hover:underline">Profiles</Link>
-              <Link href="/settings" className="hover:underline">Settings</Link>
-            </nav>
-          </div>
-        </header>
-        <main className="container py-6">{children}</main>
+        <div className="flex min-h-screen pb-16 md:pb-0">
+          <Sidebar />
+          <main className="flex-1 overflow-x-hidden">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">{children}</div>
+          </main>
+        </div>
+        <MobileNav />
       </body>
     </html>
   );

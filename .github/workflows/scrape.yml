@@ -14,6 +14,12 @@ on:
         description: "single source slug (optional)"
         required: false
         default: ""
+      profile:
+        description: "profile filter (both|dev|psych)"
+        required: false
+        default: both
+        type: choice
+        options: [both, dev, psych]
 
 concurrency:
   group: scrape
@@ -63,17 +69,31 @@ jobs:
           "
       - name: Run scrape
         if: steps.gate.outputs.run == '1'
+        env:
+          PROFILE: ${{ inputs.profile || 'both' }}
         run: |
+          PFLAG=""
+          if [ "$PROFILE" != "both" ] && [ -n "$PROFILE" ]; then
+            PFLAG="--profile $PROFILE"
+          fi
           if [ -n "${{ inputs.source }}" ]; then
-            python -m scrapers.orchestrator --source "${{ inputs.source }}"
+            python -m scrapers.orchestrator --source "${{ inputs.source }}" $PFLAG
           else
-            # Exclude onlinejobs_ph (runs in its own workflow with Playwright)
+            # Exclude onlinejobs_ph (separate workflow w/ Playwright).
+            # Filter sources whose profile_slugs includes the chosen profile.
             python -c "
-          import os
+          import os, subprocess
           from supabase import create_client
           c = create_client(os.environ['SUPABASE_URL'], os.environ['SUPABASE_SERVICE_ROLE_KEY'])
-          rows = c.table('sources').select('slug').eq('enabled', True).neq('slug', 'onlinejobs_ph').execute().data or []
+          profile = os.environ.get('PROFILE','both')
+          rows = c.table('sources').select('slug, profile_slugs').eq('enabled', True).neq('slug', 'onlinejobs_ph').execute().data or []
           for r in rows:
-              os.system(f'python -m scrapers.orchestrator --source {r[\"slug\"]}')
+              ps = r.get('profile_slugs') or ['dev','psych']
+              if profile != 'both' and profile not in ps:
+                  print('skip', r['slug'], 'profile_slugs', ps); continue
+              cmd = ['python','-m','scrapers.orchestrator','--source', r['slug']]
+              if profile != 'both':
+                  cmd += ['--profile', profile]
+              subprocess.run(cmd, check=False)
             "
           fi

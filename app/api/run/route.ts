@@ -47,15 +47,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const url = `${GH}/repos/${repo}/actions/workflows/scrape.yml/dispatches`;
-  const r = await fetch(url, {
+  // Profile param: "both" (default) | "dev" | "psych"
+  const url = new URL(req.url);
+  const profileParam = (url.searchParams.get("profile") || "both").toLowerCase();
+  const profile = ["both", "dev", "psych"].includes(profileParam) ? profileParam : "both";
+
+  const ghUrl = `${GH}/repos/${repo}/actions/workflows/scrape.yml/dispatches`;
+  const r = await fetch(ghUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
     },
-    body: JSON.stringify({ ref, inputs: { trigger: "manual" } }),
+    body: JSON.stringify({ ref, inputs: { trigger: "manual", profile } }),
   });
   if (!r.ok) {
     const text = await r.text();
