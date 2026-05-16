@@ -20,15 +20,22 @@ async function ghDefaultBranch(repo: string, token: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  const token = process.env.GH_DISPATCH_TOKEN;
-  const repo = process.env.GH_REPO;
+  const token = process.env.GH_DISPATCH_TOKEN?.trim();
+  // strip whitespace + trailing/leading slashes (common pasted-URL mistake)
+  const repo = process.env.GH_REPO?.trim().replace(/^\/+|\/+$/g, "");
   if (!token || !repo) {
     return NextResponse.json(
       { error: "GH_DISPATCH_TOKEN and GH_REPO env vars required" },
       { status: 500 }
     );
   }
-  let ref = process.env.GH_REF;
+  if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
+    return NextResponse.json(
+      { error: `GH_REPO must be 'owner/name' (got '${repo}')` },
+      { status: 400 }
+    );
+  }
+  let ref = process.env.GH_REF?.trim();
   try {
     if (!ref) ref = await ghDefaultBranch(repo, token);
   } catch (e: any) {
