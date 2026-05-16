@@ -32,13 +32,33 @@ function duration(start: string, end: string | null) {
 
 export default async function Runs() {
   const c = supabaseAdmin();
-  const { data } = await c.from("runs").select("*").order("started_at", { ascending: false }).limit(100);
+  const { data, error, count } = await c
+    .from("runs")
+    .select("*", { count: "exact" })
+    .order("started_at", { ascending: false })
+    .limit(100);
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Runs</h1>
-        <p className="text-sm text-muted-foreground">Execution history. Errors are traceable per source.</p>
+        <p className="text-sm text-muted-foreground">
+          Execution history. Errors are traceable per source.
+          {typeof count === "number" && (
+            <span className="ml-2 mono text-xs">[total in DB: {count}]</span>
+          )}
+        </p>
       </div>
+      {error && (
+        <Card className="border-destructive/40">
+          <CardContent className="py-4 text-sm text-destructive mono">
+            Query error: {error.message}
+            <br />
+            <span className="text-xs text-muted-foreground">
+              Check /api/debug for table counts + env vars.
+            </span>
+          </CardContent>
+        </Card>
+      )}
       <div className="grid grid-cols-1 gap-2">
         {(data || []).map((r: any) => (
           <Card key={r.id}>

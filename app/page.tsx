@@ -12,25 +12,34 @@ export const dynamic = "force-dynamic";
 export default async function Dashboard({
   searchParams,
 }: {
-  searchParams: { profile?: string; source?: string };
+  searchParams: { profile?: string; source?: string; view?: string };
 }) {
   const c = supabaseAdmin();
+  const view = searchParams.view === "rejected" ? "rejected" : "relevant";
+
   let q = c
     .from("jobs")
     .select("*")
-    .eq("relevant", true)
     .order("scraped_at", { ascending: false })
     .limit(200);
+  if (view === "relevant") q = q.eq("relevant", true);
+  else q = q.eq("relevant", false).not("matched_profile", "is", null);
   if (searchParams.profile) q = q.eq("matched_profile", searchParams.profile);
   if (searchParams.source) q = q.eq("source_slug", searchParams.source);
 
   const { data: jobs } = await q;
 
-  const { data: allCounts } = await c.from("jobs").select("matched_profile, relevant");
-  const total = allCounts?.length ?? 0;
-  const devCount = allCounts?.filter((j) => j.matched_profile === "dev" && j.relevant).length ?? 0;
-  const psychCount = allCounts?.filter((j) => j.matched_profile === "psych" && j.relevant).length ?? 0;
-  const relevantTotal = allCounts?.filter((j) => j.relevant).length ?? 0;
+  // Use head:true to get accurate counts without 1000-row default cap.
+  const [totalRes, relevantRes, devRes, psychRes] = await Promise.all([
+    c.from("jobs").select("*", { count: "exact", head: true }),
+    c.from("jobs").select("*", { count: "exact", head: true }).eq("relevant", true),
+    c.from("jobs").select("*", { count: "exact", head: true }).eq("relevant", true).eq("matched_profile", "dev"),
+    c.from("jobs").select("*", { count: "exact", head: true }).eq("relevant", true).eq("matched_profile", "psych"),
+  ]);
+  const total = totalRes.count ?? 0;
+  const relevantTotal = relevantRes.count ?? 0;
+  const devCount = devRes.count ?? 0;
+  const psychCount = psychRes.count ?? 0;
 
   return (
     <div className="space-y-6">
@@ -50,10 +59,13 @@ export default async function Dashboard({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted-foreground mr-1">filter:</span>
-        <FilterPill href="/" active={!searchParams.profile} label="All" />
-        <FilterPill href="/?profile=dev" active={searchParams.profile === "dev"} label="Dev" />
-        <FilterPill href="/?profile=psych" active={searchParams.profile === "psych"} label="Psych" />
+        <span className="text-muted-foreground mr-1">profile:</span>
+        <FilterPill href={`/?view=${view}`} active={!searchParams.profile} label="All" />
+        <FilterPill href={`/?view=${view}&profile=dev`} active={searchParams.profile === "dev"} label="Dev" />
+        <FilterPill href={`/?view=${view}&profile=psych`} active={searchParams.profile === "psych"} label="Psych" />
+        <span className="ml-3 text-muted-foreground mr-1">view:</span>
+        <FilterPill href={`/?view=relevant${searchParams.profile ? `&profile=${searchParams.profile}` : ""}`} active={view === "relevant"} label="Relevant" />
+        <FilterPill href={`/?view=rejected${searchParams.profile ? `&profile=${searchParams.profile}` : ""}`} active={view === "rejected"} label="Rejected (debug)" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
