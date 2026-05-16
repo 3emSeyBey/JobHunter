@@ -1,0 +1,38 @@
+name: scrape-onlinejobs
+
+on:
+  schedule:
+    # Twice daily for OnlineJobs.ph (heavier: Playwright + login per profile)
+    - cron: "30 0,12 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: scrape-onlinejobs
+  cancel-in-progress: false
+
+jobs:
+  scrape-oj:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      GMAIL_USER: ${{ secrets.GMAIL_USER }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      RUN_TRIGGER: cron
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: scrapers/requirements.txt
+      - name: Install deps
+        run: pip install -r scrapers/requirements.txt
+      - name: Install Playwright chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run OnlineJobs.ph scrape
+        run: python -m scrapers.orchestrator --source onlinejobs_ph

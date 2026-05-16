@@ -1,0 +1,36 @@
+name: keepalive
+
+on:
+  schedule:
+    # Sundays 00:00 UTC — keeps GH Actions cron alive past 60d repo inactivity, and pings Supabase to prevent 7d pause.
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install supabase==2.9.1
+      - name: Ping Supabase
+        run: |
+          python -c "
+          import os
+          from supabase import create_client
+          c = create_client(os.environ['SUPABASE_URL'], os.environ['SUPABASE_SERVICE_ROLE_KEY'])
+          r = c.table('settings').select('id').execute()
+          print('supabase ok rows=', len(r.data or []))
+          "
+      - name: Touch repo to prevent GH Actions auto-disable
+        run: |
+          git config user.email "bot@jobhunter"
+          git config user.name "JobHunter Bot"
+          date -u > .keepalive
+          git add .keepalive
+          git commit -m "chore: keepalive $(date -u +%Y-%m-%d)" || exit 0
+          git push

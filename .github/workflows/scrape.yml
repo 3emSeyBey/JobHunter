@@ -1,0 +1,79 @@
+name: scrape
+
+on:
+  schedule:
+    # Runs every hour. Python frequency-gate inside skips runs unless current hour matches the configured cadence.
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      trigger:
+        description: "trigger label (manual|telegram|backfill)"
+        required: false
+        default: manual
+      source:
+        description: "single source slug (optional)"
+        required: false
+        default: ""
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      GMAIL_USER: ${{ secrets.GMAIL_USER }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      RUN_TRIGGER: ${{ inputs.trigger || 'cron' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: scrapers/requirements.txt
+      - name: Install deps
+        run: pip install -r scrapers/requirements.txt
+      - name: Frequency gate
+        id: gate
+        run: |
+          python -c "
+          import os, sys, datetime
+          from supabase import create_client
+          c = create_client(os.environ['SUPABASE_URL'], os.environ['SUPABASE_SERVICE_ROLE_KEY'])
+          s = c.table('settings').select('cron_frequency').eq('id',1).single().execute().data or {}
+          freq = s.get('cron_frequency','twice_daily')
+          h = datetime.datetime.utcnow().hour
+          trigger = os.environ.get('RUN_TRIGGER','cron')
+          run_it = trigger != 'cron' or {
+              'hourly':   True,
+              'every_6h': h % 6 == 0,
+              'twice_daily': h in (0, 12),
+              'daily':    h == 0,
+          }.get(freq, h in (0,12))
+          print('::set-output name=run::' + ('1' if run_it else '0'))
+          print('hour=', h, 'freq=', freq, 'run=', run_it)
+          "
+      - name: Run scrape
+        if: steps.gate.outputs.run == '1'
+        run: |
+          if [ -n "${{ inputs.source }}" ]; then
+            python -m scrapers.orchestrator --source "${{ inputs.source }}"
+          else
+            # Exclude onlinejobs_ph (runs in its own workflow with Playwright)
+            python -c "
+          import os
+          from supabase import create_client
+          c = create_client(os.environ['SUPABASE_URL'], os.environ['SUPABASE_SERVICE_ROLE_KEY'])
+          rows = c.table('sources').select('slug').eq('enabled', True).neq('slug', 'onlinejobs_ph').execute().data or []
+          for r in rows:
+              os.system(f'python -m scrapers.orchestrator --source {r[\"slug\"]}')
+            "
+          fi
