@@ -73,11 +73,18 @@ def process_source(
         records = [r for r in records if r["content_hash"] not in existing_hashes]
         log_lines.append(f"{len(records)} new after cross-source dedup ({len(existing_hashes)} cross-source dupes)")
 
-        # keyword pre-filter + profile suggestion
+        # keyword pre-filter + profile suggestion + confidence scoring
+        min_conf = int(settings.get("min_confidence", 3) or 3)
+        skipped_low_conf = 0
         prepared: list[dict[str, Any]] = []
         for r in records:
-            text = f"{r.get('title','')} {r.get('description','')}"
-            neg = check_negative(text, settings.get("negative_keywords", []) or [])
+            title = r.get("title", "") or ""
+            desc = r.get("description", "") or ""
+            company = r.get("company") or ""
+            text_all = f"{title} {desc}"
+
+            # Hard reject 1: negative keyword anywhere
+            neg = check_negative(text_all, settings.get("negative_keywords", []) or [])
             if neg:
                 r["matched_profile"] = None
                 r["relevant"] = False
@@ -85,16 +92,44 @@ def process_source(
                 r["keywords_matched"] = []
                 prepared.append(r)
                 continue
+
+            # Hard reject 2: empty body — common scraper-fallback row, useless to classify
+            if len(desc.strip()) < 60 and not title:
+                r["matched_profile"] = None
+                r["relevant"] = False
+                r["ai_reason"] = "stub: empty description"
+                r["keywords_matched"] = []
+                prepared.append(r)
+                continue
+
             allowed_profiles = source.get("profile_slugs") or ["dev", "psych"]
             if profile_filter and profile_filter in ("dev", "psych"):
                 allowed_profiles = [p for p in allowed_profiles if p == profile_filter]
             dev_kw = settings.get("keywords_dev", []) if "dev" in allowed_profiles else []
             psych_kw = settings.get("keywords_psych", []) if "psych" in allowed_profiles else []
-            profile_slug, hits = suggest_profile(text, dev_kw, psych_kw)
-            r["matched_profile"] = profile_slug
+
+            profile_slug, hits, confidence = suggest_profile(title, desc, company, dev_kw, psych_kw)
             r["keywords_matched"] = hits
+
+            # Confidence gate: skip LLM if below threshold
+            if not profile_slug or confidence < min_conf:
+                r["matched_profile"] = None
+                r["relevant"] = False
+                r["ai_reason"] = (
+                    f"low confidence ({confidence}/10, threshold {min_conf})"
+                    if profile_slug
+                    else "no keyword match"
+                )
+                skipped_low_conf += 1
+                prepared.append(r)
+                continue
+
+            r["matched_profile"] = profile_slug
+            r["ai_score"] = confidence * 10  # provisional, LLM overwrites
             r["relevant"] = False  # to be set by LLM
             prepared.append(r)
+
+        log_lines.append(f"keyword-gate: {skipped_low_conf} skipped (low conf < {min_conf})")
 
         # bulk insert (so we have ids); only those with matched_profile are sent to LLM
         new = db.insert_jobs(c, prepared)

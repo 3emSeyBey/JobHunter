@@ -21,6 +21,7 @@ export default function SettingsForm({ settings }: { settings: any }) {
     llm_prompt_dev: settings.llm_prompt_dev || "",
     llm_prompt_psych: settings.llm_prompt_psych || "",
     llm_model: settings.llm_model || "gemini-2.5-flash-lite",
+    min_confidence: settings.min_confidence ?? 3,
     keywords_dev: (settings.keywords_dev || []).join(", "),
     keywords_psych: (settings.keywords_psych || []).join(", "),
     negative_keywords: (settings.negative_keywords || []).join(", "),
@@ -43,6 +44,7 @@ export default function SettingsForm({ settings }: { settings: any }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         ...s,
+        min_confidence: Math.max(0, Math.min(10, Number(s.min_confidence) || 0)),
         keywords_dev: s.keywords_dev.split(",").map((x: string) => x.trim()).filter(Boolean),
         keywords_psych: s.keywords_psych.split(",").map((x: string) => x.trim()).filter(Boolean),
         negative_keywords: s.negative_keywords.split(",").map((x: string) => x.trim()).filter(Boolean),
@@ -135,6 +137,30 @@ export default function SettingsForm({ settings }: { settings: any }) {
           <div>
             <Label>Negative keywords (auto-reject)</Label>
             <Textarea rows={2} value={s.negative_keywords} onChange={(e) => setS({ ...s, negative_keywords: e.target.value })} />
+          </div>
+          <div className="rounded-md border border-accent/30 bg-accent/5 p-3 space-y-2">
+            <Label>LLM confidence gate (min score 0–10)</Label>
+            <p className="text-xs text-muted-foreground">
+              Jobs below this score skip the LLM (saves tokens). Title-keyword = +3, body-keyword = +1, stub description = −2, no company = −1.
+              Default <span className="mono">3</span> = one title hit OR three body hits required.
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={10}
+                step={1}
+                value={s.min_confidence}
+                onChange={(e) => setS({ ...s, min_confidence: Number(e.target.value) })}
+                className="flex-1 accent-accent"
+              />
+              <span className="mono w-8 text-right text-sm">{s.min_confidence}</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              <b>0</b> = call LLM on every keyword-matching job (most $) ·
+              <b> 3</b> = balanced ·
+              <b> 6+</b> = only very high-confidence matches (cheapest, may miss)
+            </p>
           </div>
         </CardContent>
       </Card>

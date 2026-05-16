@@ -92,6 +92,8 @@ create table if not exists settings (
   onlinejobs_dev_password text,
   onlinejobs_psych_email text,
   onlinejobs_psych_password text,
+  min_confidence int not null default 3 check (min_confidence between 0 and 10),
+  llm_batch_size int not null default 1 check (llm_batch_size between 1 and 20),
   updated_at timestamptz not null default now()
 );
 
