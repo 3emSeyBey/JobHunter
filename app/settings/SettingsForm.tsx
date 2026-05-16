@@ -185,8 +185,11 @@ export default function SettingsForm({ settings }: { settings: any }) {
             <Label>Telegram enabled</Label>
           </div>
           <div>
-            <Label>Notify emails (fallback if profile email missing)</Label>
-            <Input value={s.notify_emails} onChange={(e) => setS({ ...s, notify_emails: e.target.value })} />
+            <Label className="text-muted-foreground">Global notify emails (unused — kept for legacy)</Label>
+            <Input value={s.notify_emails} onChange={(e) => setS({ ...s, notify_emails: e.target.value })} disabled />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Job digests now route strictly per-profile. Edit each profile&apos;s notify email on the <a href="/profiles" className="underline">Profiles</a> page.
+            </p>
           </div>
         </CardContent>
       </Card>

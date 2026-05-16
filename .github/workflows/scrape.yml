@@ -71,6 +71,7 @@ jobs:
         if: steps.gate.outputs.run == '1'
         env:
           PROFILE: ${{ inputs.profile || 'both' }}
+          EXCLUDE_SOURCES: "onlinejobs_ph"
         run: |
           PFLAG=""
           if [ "$PROFILE" != "both" ] && [ -n "$PROFILE" ]; then
@@ -79,21 +80,8 @@ jobs:
           if [ -n "${{ inputs.source }}" ]; then
             python -m scrapers.orchestrator --source "${{ inputs.source }}" $PFLAG
           else
-            # Exclude onlinejobs_ph (separate workflow w/ Playwright).
-            # Filter sources whose profile_slugs includes the chosen profile.
-            python -c "
-          import os, subprocess
-          from supabase import create_client
-          c = create_client(os.environ['SUPABASE_URL'], os.environ['SUPABASE_SERVICE_ROLE_KEY'])
-          profile = os.environ.get('PROFILE','both')
-          rows = c.table('sources').select('slug, profile_slugs').eq('enabled', True).neq('slug', 'onlinejobs_ph').execute().data or []
-          for r in rows:
-              ps = r.get('profile_slugs') or ['dev','psych']
-              if profile != 'both' and profile not in ps:
-                  print('skip', r['slug'], 'profile_slugs', ps); continue
-              cmd = ['python','-m','scrapers.orchestrator','--source', r['slug']]
-              if profile != 'both':
-                  cmd += ['--profile', profile]
-              subprocess.run(cmd, check=False)
-            "
+            # Single-process run loops all enabled sources internally,
+            # accumulates relevant jobs across sources, and sends ONE batched
+            # digest per profile at the end.
+            python -m scrapers.orchestrator --exclude "$EXCLUDE_SOURCES" $PFLAG
           fi

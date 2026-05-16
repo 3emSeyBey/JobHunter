@@ -16,7 +16,7 @@ from typing import Any
 from . import db
 from .keyword_filter import check_negative, suggest_profile
 from .llm_filter import classify
-from .notify import email_send, format_job_email, format_job_telegram, telegram_send  # noqa: F401  (telegram_send kept available for future use)
+from .notify import email_send, format_digest_email, format_digest_telegram, telegram_send
 from .registry import build
 
 logging.basicConfig(
@@ -45,6 +45,7 @@ def process_source(
     settings: dict[str, Any],
     profiles_by_slug: dict[str, dict],
     profile_filter: str | None = None,
+    relevant_by_profile: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, int]:
     slug = source["slug"]
     try:
@@ -175,18 +176,10 @@ def process_source(
                     )
                     if verdict["relevant"]:
                         relevant += 1
-                        # notify
+                        # Accumulate for batched run-end notification (don't send per-match).
                         merged = {**job, **verdict, "source_slug": slug}
-                        notified_email = False
-                        notified_tg = False
-                        if settings.get("email_enabled"):
-                            subj, html = format_job_email(merged, profile)
-                            to = [profile.get("notify_email")] if profile.get("notify_email") else (settings.get("notify_emails") or [])
-                            notified_email = email_send(to, subj, html)
-                        if settings.get("telegram_enabled"):
-                            notified_tg = telegram_send(format_job_telegram(merged, profile))
-                        if notified_email or notified_tg:
-                            db.update_job(c, job["id"], notified=True)
+                        if relevant_by_profile is not None:
+                            relevant_by_profile.setdefault(profile_slug, []).append(merged)
 
         status = "ok" if not errors else "partial"
     except Exception as e:  # noqa: BLE001
@@ -217,7 +210,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", help="Run a single source slug (default: all enabled)")
     ap.add_argument("--profile", choices=["dev", "psych"], help="Restrict to one profile")
+    ap.add_argument("--exclude", default="", help="Comma-separated slugs to skip (e.g. onlinejobs_ph)")
     args = ap.parse_args()
+    excluded = {s.strip() for s in (args.exclude or "").split(",") if s.strip()}
 
     c = db.client()
     settings = db.load_settings(c)
@@ -231,8 +226,12 @@ def main() -> int:
         if not sources:
             log.error("source %s not found or disabled", args.source)
             return 3
+    if excluded:
+        sources = [s for s in sources if s["slug"] not in excluded]
+        log.info("excluded sources: %s", sorted(excluded))
 
     summary: dict[str, dict[str, int]] = {}
+    relevant_by_profile: dict[str, list[dict[str, Any]]] = {}
     for source in sources:
         # source-level skip if profile filter excludes this source entirely
         ps = source.get("profile_slugs") or ["dev", "psych"]
@@ -240,11 +239,50 @@ def main() -> int:
             log.info("skip %s — profile_slugs=%s does not include %s", source["slug"], ps, args.profile)
             continue
         log.info("=== source: %s (profile=%s) ===", source["slug"], args.profile or "both")
-        summary[source["slug"]] = process_source(c, source, settings, profiles, profile_filter=args.profile)
+        summary[source["slug"]] = process_source(
+            c, source, settings, profiles,
+            profile_filter=args.profile,
+            relevant_by_profile=relevant_by_profile,
+        )
 
     log.info("run summary: %s", summary)
-    # Per-match Telegram notifications fire inside process_source on relevant jobs.
-    # No end-of-run summary message (was spamming once per source subprocess).
+    log.info("relevant by profile: %s", {k: len(v) for k, v in relevant_by_profile.items()})
+
+    # === Batched per-profile notifications (one email + one telegram per profile, end-of-run) ===
+    for profile_slug, jobs_for_profile in relevant_by_profile.items():
+        if not jobs_for_profile:
+            continue
+        profile = profiles.get(profile_slug)
+        if not profile:
+            log.warning("no profile row for %s — skipping notification", profile_slug)
+            continue
+
+        # STRICT per-profile email routing — dev → mack only, psych → jenefer only.
+        # No fallback to a shared list. If profile.notify_email is missing, skip email entirely.
+        notify_email = (profile.get("notify_email") or "").strip()
+        sent_email = False
+        sent_tg = False
+        if settings.get("email_enabled"):
+            if not notify_email:
+                log.warning("profile %s has no notify_email — email digest skipped", profile_slug)
+            else:
+                subj, html = format_digest_email(jobs_for_profile, profile)
+                sent_email = email_send([notify_email], subj, html)
+                log.info("email digest → %s (%s) for %s: sent=%s",
+                         notify_email, profile_slug, len(jobs_for_profile), sent_email)
+        if settings.get("telegram_enabled"):
+            sent_tg = telegram_send(format_digest_telegram(jobs_for_profile, profile))
+            log.info("telegram digest for %s (%d jobs): sent=%s", profile_slug, len(jobs_for_profile), sent_tg)
+
+        # Mark notified=true on the DB rows so they're not re-sent next run if logic ever changes.
+        if sent_email or sent_tg:
+            ids = [j.get("id") for j in jobs_for_profile if j.get("id")]
+            if ids:
+                try:
+                    c.table("jobs").update({"notified": True}).in_("id", ids).execute()
+                except Exception as e:  # noqa: BLE001
+                    log.warning("bulk notified update failed: %s", e)
+
     return 0
 
 

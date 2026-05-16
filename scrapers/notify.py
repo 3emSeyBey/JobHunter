@@ -51,28 +51,65 @@ def email_send(to: list[str], subject: str, html: str) -> bool:
         return False
 
 
-def format_job_email(job: dict[str, Any], profile: dict[str, Any]) -> tuple[str, str]:
-    subject = f"[JobHunter:{profile.get('slug','')}] {job.get('title','')[:80]} — {job.get('company') or job.get('source_slug')}"
+def _esc(s: Any) -> str:
+    import html as _html
+
+    return _html.escape(str(s) if s is not None else "")
+
+
+def format_digest_email(jobs: list[dict[str, Any]], profile: dict[str, Any]) -> tuple[str, str]:
+    """One email per profile, listing every relevant job from this run."""
+    slug = profile.get("slug", "").upper()
+    n = len(jobs)
+    subject = f"[JobHunter:{slug}] {n} new relevant job{'s' if n != 1 else ''} — {profile.get('name','')}"
+    rows: list[str] = []
+    for j in sorted(jobs, key=lambda x: x.get("ai_score") or 0, reverse=True):
+        rows.append(
+            f"""
+        <div style="border:1px solid #2a2f3e;border-radius:10px;padding:14px;margin-bottom:10px;background:#0f1320">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:start">
+            <h3 style="margin:0;font-size:15px;color:#f5f7ff">{_esc(j.get('title',''))}</h3>
+            <span style="font-family:'Fira Code',monospace;color:#22c55e;font-weight:600;white-space:nowrap">{_esc(j.get('ai_score','?'))}/100</span>
+          </div>
+          <p style="margin:6px 0;color:#9aa3b8;font-size:12px">
+            {_esc(j.get('company') or '—')} · {_esc(j.get('location') or '—')} ·
+            <span style="font-family:'Fira Code',monospace">{_esc(j.get('source_slug',''))}</span>
+            {f" · {_esc(j.get('salary'))}" if j.get('salary') else ""}
+          </p>
+          <p style="margin:6px 0 10px;color:#cdd5e0;font-size:13px">{_esc(j.get('ai_reason',''))}</p>
+          <a href="{_esc(j.get('url',''))}" style="background:#22c55e;color:#04130a;padding:8px 12px;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;display:inline-block">View posting →</a>
+        </div>"""
+        )
     html = f"""
-    <div style="font-family:system-ui,sans-serif;max-width:640px">
-      <h2 style="margin:0 0 8px">{job.get('title','')}</h2>
-      <p style="color:#666;margin:0 0 12px">{job.get('company') or '—'} · {job.get('location') or '—'} · {job.get('source_slug','')}</p>
-      <p><b>Why relevant:</b> {job.get('ai_reason','')}</p>
-      <p><b>Score:</b> {job.get('ai_score','')}/100</p>
-      <p><b>Salary:</b> {job.get('salary') or '—'}</p>
-      <p><a href="{job.get('url','')}" style="background:#000;color:#fff;padding:10px 14px;text-decoration:none;border-radius:6px;display:inline-block">View posting →</a></p>
-      <hr>
-      <pre style="white-space:pre-wrap;font-family:system-ui,sans-serif;color:#444;font-size:13px">{(job.get('description') or '')[:1500]}</pre>
+    <div style="font-family:'Fira Sans',system-ui,sans-serif;max-width:680px;margin:0 auto;background:#020617;color:#f5f7ff;padding:18px">
+      <h1 style="margin:0 0 6px;font-size:18px">JobHunter · {_esc(slug)} digest</h1>
+      <p style="margin:0 0 16px;color:#9aa3b8;font-size:13px">
+        {n} relevant job{'s' if n != 1 else ''} for {_esc(profile.get('name',''))}.
+      </p>
+      {''.join(rows)}
+      <p style="margin-top:20px;color:#5b6478;font-size:11px;font-family:'Fira Code',monospace">
+        Sent only to {_esc(profile.get('notify_email',''))} · jobhunter
+      </p>
     </div>
     """
     return subject, html
 
 
-def format_job_telegram(job: dict[str, Any], profile: dict[str, Any]) -> str:
-    return (
-        f"<b>[{profile.get('slug','').upper()}] {job.get('title','')[:120]}</b>\n"
-        f"{job.get('company') or '—'} · {job.get('location') or '—'} · <i>{job.get('source_slug','')}</i>\n"
-        f"Score: {job.get('ai_score','')}/100\n"
-        f"{job.get('ai_reason','')}\n\n"
-        f"{job.get('url','')}"
-    )
+def format_digest_telegram(jobs: list[dict[str, Any]], profile: dict[str, Any]) -> str:
+    """One Telegram message per profile, top-N relevant jobs."""
+    slug = profile.get("slug", "").upper()
+    n = len(jobs)
+    lines = [f"<b>JobHunter · {slug}</b> · {n} new relevant"]
+    for j in sorted(jobs, key=lambda x: x.get("ai_score") or 0, reverse=True)[:10]:
+        score = j.get("ai_score", "?")
+        title = (j.get("title") or "")[:90]
+        company = j.get("company") or j.get("source_slug", "")
+        lines.append(
+            f"\n<b>{score}/100</b> · {_esc(title)}\n"
+            f"<i>{_esc(company)}</i> · {_esc(j.get('location','—'))}\n"
+            f"{_esc((j.get('ai_reason') or '')[:160])}\n"
+            f"{j.get('url','')}"
+        )
+    if n > 10:
+        lines.append(f"\n…and {n - 10} more.")
+    return "\n".join(lines)

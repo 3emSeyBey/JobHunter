@@ -42,14 +42,22 @@ export default function ProfileForm({ profile }: { profile: any }) {
         <Label>Name</Label>
         <Input value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} />
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2">
         <div>
-          <Label>Email</Label>
+          <Label>Personal email (identifier)</Label>
           <Input value={p.email} onChange={(e) => setP({ ...p, email: e.target.value })} />
         </div>
-        <div>
-          <Label>Notify email</Label>
-          <Input value={p.notify_email} onChange={(e) => setP({ ...p, notify_email: e.target.value })} />
+        <div className="rounded-md border border-accent/40 bg-accent/5 p-3">
+          <Label className="text-accent">Notify email (digest delivered here)</Label>
+          <Input
+            value={p.notify_email}
+            onChange={(e) => setP({ ...p, notify_email: e.target.value })}
+            placeholder="e.g. mackcloydbacarisas@gmail.com"
+          />
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Only this profile&apos;s relevant jobs go to this address.
+            Dev jobs never reach the psych address and vice versa.
+          </p>
         </div>
       </div>
       <div>
