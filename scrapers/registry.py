@@ -6,12 +6,15 @@ from .base import BaseScraper
 from .glints import GlintsScraper
 from .greenhouse import GreenhouseScraper
 from .himalayas import HimalayasScraper
+from .hiretalent import HireTalentScraper
 from .hn import HNScraper
+from .jobstreet import JobStreetPHScraper
 from .kalibrr import KalibrrScraper
 from .lever import LeverScraper
 from .onlinejobs_ph import OnlineJobsPHScraper
 from .remoteok import RemoteOKScraper
 from .remotive import RemotiveScraper
+from .virtualstaff import VirtualStaffScraper
 from .wwr import WWRScraper
 
 REGISTRY: dict[str, type[BaseScraper]] = {
@@ -26,6 +29,9 @@ REGISTRY: dict[str, type[BaseScraper]] = {
     "kalibrr": KalibrrScraper,
     "glints": GlintsScraper,
     "onlinejobs_ph": OnlineJobsPHScraper,
+    "jobstreet": JobStreetPHScraper,
+    "virtualstaff": VirtualStaffScraper,
+    "hiretalent": HireTalentScraper,
 }
 
 
