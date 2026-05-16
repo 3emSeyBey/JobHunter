@@ -16,7 +16,7 @@ from typing import Any
 from . import db
 from .keyword_filter import check_negative, suggest_profile
 from .llm_filter import classify
-from .notify import email_send, format_job_email, format_job_telegram, telegram_send
+from .notify import email_send, format_job_email, format_job_telegram, telegram_send  # noqa: F401  (telegram_send kept available for future use)
 from .registry import build
 
 logging.basicConfig(
@@ -47,7 +47,15 @@ def process_source(
     profile_filter: str | None = None,
 ) -> dict[str, int]:
     slug = source["slug"]
-    run_id = db.start_run(c, trigger=os.environ.get("RUN_TRIGGER", "cron"), source_slug=slug)
+    try:
+        run_id = db.start_run(c, trigger=os.environ.get("RUN_TRIGGER", "cron"), source_slug=slug)
+        log.info("[%s] started run_id=%s", slug, run_id)
+    except Exception as e:  # noqa: BLE001
+        # Critical: log to stderr so it shows in GH Actions UI, and abort this source.
+        import sys
+        sys.stderr.write(f"[FATAL] start_run failed for {slug}: {type(e).__name__}: {e}\n")
+        log.exception("start_run failed for %s", slug)
+        return {"seen": 0, "new": 0, "relevant": 0, "errors": 1}
     seen = new = relevant = 0
     errors: list[str] = []
     log_lines: list[str] = []
@@ -186,16 +194,22 @@ def process_source(
         errors.append(f"{type(e).__name__}: {e}")
         status = "error"
 
-    db.finish_run(
-        c,
-        run_id,
-        status=status,
-        jobs_seen=seen,
-        jobs_new=new,
-        jobs_relevant=relevant,
-        errors=errors,
-        log="\n".join(log_lines),
-    )
+    try:
+        db.finish_run(
+            c,
+            run_id,
+            status=status,
+            jobs_seen=seen,
+            jobs_new=new,
+            jobs_relevant=relevant,
+            errors=errors,
+            log="\n".join(log_lines),
+        )
+        log.info("[%s] finished status=%s seen=%d new=%d relevant=%d", slug, status, seen, new, relevant)
+    except Exception as e:  # noqa: BLE001
+        import sys
+        sys.stderr.write(f"[FATAL] finish_run failed for {slug} (run_id={run_id}): {type(e).__name__}: {e}\n")
+        log.exception("finish_run failed for %s", slug)
     return {"seen": seen, "new": new, "relevant": relevant, "errors": len(errors)}
 
 
@@ -229,11 +243,8 @@ def main() -> int:
         summary[source["slug"]] = process_source(c, source, settings, profiles, profile_filter=args.profile)
 
     log.info("run summary: %s", summary)
-    if settings.get("telegram_enabled"):
-        lines = ["<b>JobHunter run complete</b>"]
-        for slug, s in summary.items():
-            lines.append(f"• {slug}: seen={s['seen']} new={s['new']} relevant={s['relevant']} err={s['errors']}")
-        telegram_send("\n".join(lines))
+    # Per-match Telegram notifications fire inside process_source on relevant jobs.
+    # No end-of-run summary message (was spamming once per source subprocess).
     return 0
 
 
