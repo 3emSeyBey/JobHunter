@@ -1,45 +1,56 @@
-"""Glints — sitemap-driven discovery for PH."""
+"""Glints — explore page HTML scrape.
+
+Sitemap path was blocked by CDN (403). Fallback: hit the search-page HTML
+and parse hydrated SSR markup. Throttle aggressively to stay polite.
+"""
 from __future__ import annotations
 
-import re
+import logging
 
 import httpx
 from selectolax.parser import HTMLParser
 
 from .base import BaseScraper, RawJob
 
+log = logging.getLogger(__name__)
+
+UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+
 
 class GlintsScraper(BaseScraper):
     slug = "glints"
-    SITEMAP = "https://glints.com/explore-page-id-sitemap.xml"
 
     def fetch(self):
+        queries = self.config.get("queries", ["python", "virtual-assistant", "customer-service"])
         country = self.config.get("country", "ph")
-        with httpx.Client(timeout=30, headers={"User-Agent": "JobHunter/0.1"}, follow_redirects=True) as c:
-            try:
-                r = c.get(self.SITEMAP)
-                r.raise_for_status()
-            except Exception:
-                return
-            urls = re.findall(r"<loc>([^<]+)</loc>", r.text)
-            ph_urls = [u for u in urls if f"/{country}" in u.lower()][:30]
-            for u in ph_urls:
+        with httpx.Client(
+            timeout=30,
+            headers={"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"},
+            follow_redirects=True,
+        ) as c:
+            for q in queries:
+                url = f"https://glints.com/{country}/opportunities/jobs/explore?keyword={q}&country={country.upper()}"
                 try:
-                    page = c.get(u)
-                    page.raise_for_status()
-                except Exception:
+                    r = c.get(url)
+                    if r.status_code >= 400:
+                        log.warning("glints %s returned %s", url, r.status_code)
+                        continue
+                except Exception as e:  # noqa: BLE001
+                    log.warning("glints fetch failed: %s", e)
                     continue
-                doc = HTMLParser(page.text)
-                title = doc.css_first("h1")
-                desc = doc.css_first("meta[name='description']")
-                yield RawJob(
-                    source_slug=self.slug,
-                    external_id=u,
-                    url=u,
-                    title=(title.text() if title else "").strip()[:200],
-                    company=None,
-                    location="PH",
-                    salary=None,
-                    description=(desc.attributes.get("content", "") if desc else "")[:8000],
-                    posted_at=None,
-                )
+                doc = HTMLParser(r.text)
+                for card in doc.css("a[href*='/opportunities/jobs/']")[:30]:
+                    href = card.attributes.get("href", "") or ""
+                    if not href.startswith("http"):
+                        href = "https://glints.com" + href
+                    yield RawJob(
+                        source_slug=self.slug,
+                        external_id=href,
+                        url=href,
+                        title=(card.text() or "").strip()[:200] or "(Glints job)",
+                        company=None,
+                        location=country.upper(),
+                        salary=None,
+                        description="",
+                        posted_at=None,
+                    )

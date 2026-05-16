@@ -27,6 +27,54 @@ def content_hash(title: str, company: str | None, description: str) -> str:
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 
+def normalize_ts(v) -> str | None:
+    """Normalize a timestamp from various scraper sources into ISO 8601.
+
+    Accepts: epoch seconds (int or stringified int), epoch ms, ISO 8601 string,
+    RFC 2822 from RSS, or None. Returns None on parse failure.
+    Postgres timestamptz rejects raw epoch ints, so we always emit ISO.
+    """
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        try:
+            # heuristic: epoch ms vs s
+            secs = v / 1000 if v > 10**12 else v
+            return datetime.fromtimestamp(secs, tz=timezone.utc).isoformat()
+        except Exception:
+            return None
+    if isinstance(v, str):
+        s = v.strip()
+        if not s:
+            return None
+        # all-digit string → epoch
+        if s.isdigit():
+            try:
+                n = int(s)
+                secs = n / 1000 if n > 10**12 else n
+                return datetime.fromtimestamp(secs, tz=timezone.utc).isoformat()
+            except Exception:
+                return None
+        # try ISO 8601 directly
+        try:
+            # Python's fromisoformat handles "2026-05-16T18:39:15+00:00" but not "Z"
+            iso = s.replace("Z", "+00:00")
+            return datetime.fromisoformat(iso).astimezone(timezone.utc).isoformat()
+        except Exception:
+            pass
+        # RFC 2822 (RSS pubDate)
+        try:
+            from email.utils import parsedate_to_datetime
+
+            dt = parsedate_to_datetime(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc).isoformat()
+        except Exception:
+            return None
+    return None
+
+
 @dataclass
 class RawJob:
     source_slug: str
@@ -43,6 +91,9 @@ class RawJob:
         d = asdict(self)
         d["content_hash"] = content_hash(self.title, self.company, self.description)
         d["scraped_at"] = datetime.now(timezone.utc).isoformat()
+        # Postgres timestamptz refuses raw epoch ints; normalize here so scrapers
+        # don't all have to remember.
+        d["posted_at"] = normalize_ts(self.posted_at)
         return d
 
 
