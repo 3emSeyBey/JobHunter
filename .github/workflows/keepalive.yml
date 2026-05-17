@@ -9,6 +9,8 @@ on:
 jobs:
   keepalive:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
