@@ -165,7 +165,3 @@ supabase/migrations/  schema + seed
 - **Tune prompts**: `/settings` UI live-edits `settings.llm_prompt_dev` / `settings.llm_prompt_psych`.
 - **Add curated companies (ATS)**: `/sources` → edit `config.slugs` for greenhouse/lever/ashby rows (currently via direct DB update — UI editor TODO).
 - **Lower LLM cost**: tighten keyword filters so fewer posts reach the LLM (it only runs on keyword-matched jobs).
-
-## Inspired by
-
-[`syndr-server`](file:///home/eem/Desktop/Tasks3/Syndr/syndr-server) — abstract worker pattern, dedup-before-LLM, campaign-based config. Differences: simpler $0 stack (no Mongo/BullMQ/PM2), single-user, Python scrapers instead of TS workers.
